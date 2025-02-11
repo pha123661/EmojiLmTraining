@@ -7,3 +7,4 @@ evaluate
 nltk
 rouge_score
 sentencepiece
+seaborn

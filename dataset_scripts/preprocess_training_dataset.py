@@ -6,65 +6,54 @@ import re
 from collections import Counter
 
 import jsonlines
-import matplotlib.pyplot as plt
-import seaborn as sns
 from tqdm.auto import tqdm
 
 random.seed(11944004)
 
-parser = argparse.ArgumentParser(description='Read contents of CSV files')
-parser.add_argument('files', metavar='file', nargs='*',
-                    help='CSV file(s) to read')
+parser = argparse.ArgumentParser()
+parser.add_argument("--filename", type=str, default="emoji_dataset/emoji_dataset.csv")
 args = parser.parse_args()
 
-csv_files = args.files
-if len(csv_files) == 0:
-    csv_files = [os.path.join("emoji_dataset", f)
-                 for f in os.listdir("emoji_dataset")
-                 if f.endswith(".csv")]
-print(f"Reading from {csv_files}")
-input_text_list = []
-for filename in csv_files:
-    with open(filename) as f:
-        reader = csv.reader(f)
-        next(reader)  # skip header
-        for row in reader:
-            input_text_list.append(row[0])
+with open(args.filename) as f:
+    reader = csv.reader(f)
+    input_text_list = [row[0] for row in reader]
 print(f"Total {len(input_text_list)} lines before preprocessing")
 
 
-def preprocess(text):
+def normalize_whitespace(text):
+    # Remove thin space and zero width space
     text = re.sub(r"[\u2009\n]", " ", text)
     text = re.sub(r"[\u200c\u200d\ufe0f]", "", text)
+
+    # Remove replacement character
+    text = re.sub(r"\ufffd", "", text)
     return text
 
 
-with open("emoji_dataset/emojis.txt", "r") as f:
-    emojis = f.readline()
+# Load selected emojis and rejected emojis
+with open("emoji_data/selected_emojis.txt", "r") as f:
+    selected_emojis_list = f.readline()
+emoji_pattern = f"([^{selected_emojis_list}]+)([{selected_emojis_list}|\n]+)"
 
-
-def extract_continuous_emojis(text):
-    pattern = f"([^{emojis}]+)([{emojis}|\n]+)"
-    matches = re.findall(pattern, text)
-    return matches
-
-
-reject_list = open("emoji_dataset/reject_list.txt", "r").read().splitlines()
+with open("emoji_data/rejected_emojis.txt", "r") as f:
+    reject_list = f.read().splitlines()
 reject_pattern = '[' + ''.join(reject_list) + ']'
 
 
+def extract_continuous_emojis(text):
+    matches = re.findall(emoji_pattern, text)
+    return matches
+
 def postprocess(text):
     text = re.sub(reject_pattern, '', text)
-    text = re.sub(r"\ufffd", "", text)
     text = re.sub(r"https?://\S+|www\.\S+", "", text)
     text = re.sub(r"^[\s,。、，]+|[\s,。、，]+$", "", text)
-
     return text
 
 
 def contains_three_continuous_chars(sentence):
-    pattern = r"(.)\1\1"  # Pattern to match three continuous characters
-    match = re.search(pattern, sentence)
+    three_continuous_chars_pattern = r"(.)\1\1"  # Pattern to match three continuous characters
+    match = re.search(three_continuous_chars_pattern, sentence)
     return bool(match)
 
 
@@ -74,16 +63,16 @@ def contains_only_ascii(s):
 
 dataset = []
 for text in tqdm(input_text_list):
-    text = preprocess(text)
+    text = normalize_whitespace(text)
     extracted_content = extract_continuous_emojis(text)
-    for input_text, output_text in extracted_content:
-        input_text = postprocess(input_text)
-        output_text = postprocess(output_text)
-        if contains_three_continuous_chars(input_text):
+    for extracted_test, extracted_emojis in extracted_content:
+        extracted_test = postprocess(extracted_test)
+        extracted_emojis = postprocess(extracted_emojis)
+        if contains_three_continuous_chars(extracted_test):
             continue
-        if len(input_text) == 0 or len(output_text) == 0:
+        if len(extracted_test) == 0 or len(extracted_emojis) == 0:
             continue
-        dataset.append({"input": input_text, "output": output_text})
+        dataset.append({"input": extracted_test, "output": extracted_emojis})
 print("##########")
 print(f"Total {len(dataset)} lines after preprocessing")
 
@@ -130,7 +119,7 @@ print(
     f"Samples with >6 output chars: {len([d for d in dataset if len(d['output']) > 6])}")
 print("##########")
 
-with jsonlines.open("emoji_dataset/train.jsonl", "w") as writer:
+with jsonlines.open("emoji_dataset/train_and_val.jsonl", "w") as writer:
     writer.write_all(dataset)
 
 emoji_counter = Counter()
@@ -162,43 +151,46 @@ def split_jsonl(input_file, train_file, val_file, split_ratio=0.8):
             writer_val.write(item)
 
 
-print("Plotting...")
-input_lengths = [len(d['input']) for d in dataset]
-output_lengths = [len(d['output']) for d in dataset]
-sns.set_theme(style="whitegrid")
+split_jsonl("emoji_dataset/train_and_val.jsonl", "emoji_dataset/train.jsonl",
+            "emoji_dataset/val.jsonl", split_ratio=0.8)
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+# print("Plotting...")
+# input_lengths = [len(d['input']) for d in dataset]
+# output_lengths = [len(d['output']) for d in dataset]
+# sns.set_theme(style="whitegrid")
 
-# Plot input length distribution on a log scale
-sns.histplot(input_lengths, bins=100, ax=axes[0])
-axes[0].set_title('Input Length Distribution')
-axes[0].set_xlabel('Length')
-axes[0].set_ylabel('Count')
-axes[0].set_yscale('log')
+# fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 
-# Plot output length distribution on a log scale
-sns.histplot(output_lengths, bins=100, ax=axes[1])
-axes[1].set_title('Output Length Distribution')
-axes[1].set_xlabel('Length')
-axes[1].set_ylabel('Count')
-axes[1].set_yscale('log')
+# # Plot input length distribution on a log scale
+# sns.histplot(input_lengths, bins=100, ax=axes[0])
+# axes[0].set_title('Input Length Distribution')
+# axes[0].set_xlabel('Length')
+# axes[0].set_ylabel('Count')
+# axes[0].set_yscale('log')
 
-plt.tight_layout()
-plt.savefig("emoji_dataset/length_distributions.png")
+# # Plot output length distribution on a log scale
+# sns.histplot(output_lengths, bins=100, ax=axes[1])
+# axes[1].set_title('Output Length Distribution')
+# axes[1].set_xlabel('Length')
+# axes[1].set_ylabel('Count')
+# axes[1].set_yscale('log')
 
-# Plot emoji frequency
-emoji_counter = Counter()
-for text in dataset:
-    emoji_counter.update(text['output'])
-plt.figure(figsize=(12, 6))
+# plt.tight_layout()
+# plt.savefig("emoji_dataset/length_distributions.png")
 
-values = list(emoji_counter.values())
-sorted_idx = sorted(range(len(values)),
-                    key=lambda k: values[k], reverse=True)
-sns.barplot([values[i] for i in sorted_idx])
-plt.xticks([])
-plt.title('Emoji Frequency Distribution')
-plt.ylabel('Count')
-plt.yscale('log')
-plt.tight_layout()
-plt.savefig("emoji_dataset/emoji_distribution.png")
+# # Plot emoji frequency
+# emoji_counter = Counter()
+# for text in dataset:
+#     emoji_counter.update(text['output'])
+# plt.figure(figsize=(12, 6))
+
+# values = list(emoji_counter.values())
+# sorted_idx = sorted(range(len(values)),
+#                     key=lambda k: values[k], reverse=True)
+# sns.barplot([values[i] for i in sorted_idx])
+# plt.xticks([])
+# plt.title('Emoji Frequency Distribution')
+# plt.ylabel('Count')
+# plt.yscale('log')
+# plt.tight_layout()
+# plt.savefig("emoji_dataset/emoji_distribution.png")
