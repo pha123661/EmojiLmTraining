@@ -3,6 +3,7 @@ import random
 
 import jsonlines
 import numpy as np
+import torch
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (AutoModelForSeq2SeqLM, AutoTokenizer,
@@ -39,7 +40,7 @@ def main():
     model_name = "google/mt5-base"
     output_dir = "EmojiLMSeq2SeqLoRA"
 
-    task_prefix = "emoji: "
+    task_prefix = ""
     max_length = 128
 
     dataset = load_dataset(dataset_name)
@@ -125,15 +126,15 @@ def main():
         warmup_steps=500,
         label_smoothing_factor=0.1,
         # Data & Saving
-        dataloader_num_workers=4,
+        dataloader_num_workers=0 if torch.backends.mps.is_available() else 4,
         generation_max_length=5,
         output_dir=output_dir,
         predict_with_generate=True,
-        evaluation_strategy="epoch",
+        eval_strategy="epoch",
         logging_steps=100,
         save_strategy='epoch',
         overwrite_output_dir=True,
-        include_inputs_for_metrics=True,
+        include_for_metrics=['inputs'],
         save_total_limit=10,
     )
 
@@ -142,7 +143,7 @@ def main():
         args=training_args,
         train_dataset=dataset['train'],
         eval_dataset=dataset['validation'],
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
     )

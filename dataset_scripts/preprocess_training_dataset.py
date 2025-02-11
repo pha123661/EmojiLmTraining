@@ -11,7 +11,8 @@ from tqdm.auto import tqdm
 random.seed(11944004)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--filename", type=str, default="emoji_dataset/emoji_dataset.csv")
+parser.add_argument("--filename", type=str,
+                    default="emoji_dataset/emoji_dataset.csv")
 args = parser.parse_args()
 
 with open(args.filename) as f:
@@ -44,6 +45,7 @@ def extract_continuous_emojis(text):
     matches = re.findall(emoji_pattern, text)
     return matches
 
+
 def postprocess(text):
     text = re.sub(reject_pattern, '', text)
     text = re.sub(r"https?://\S+|www\.\S+", "", text)
@@ -52,7 +54,8 @@ def postprocess(text):
 
 
 def contains_three_continuous_chars(sentence):
-    three_continuous_chars_pattern = r"(.)\1\1"  # Pattern to match three continuous characters
+    # Pattern to match three continuous characters
+    three_continuous_chars_pattern = r"(.)\1\1"
     match = re.search(three_continuous_chars_pattern, sentence)
     return bool(match)
 
@@ -152,7 +155,7 @@ def split_jsonl(input_file, train_file, val_file, split_ratio=0.8):
 
 
 split_jsonl("emoji_dataset/train_and_val.jsonl", "emoji_dataset/train.jsonl",
-            "emoji_dataset/val.jsonl", split_ratio=0.8)
+            "emoji_dataset/val.jsonl", split_ratio=0.95)
 
 # print("Plotting...")
 # input_lengths = [len(d['input']) for d in dataset]
