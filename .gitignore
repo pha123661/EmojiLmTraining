@@ -2,4 +2,4 @@
 logs
 *.json
 results*
-EmojiLMSeq2SeqLoRA
+*EmojiLMSeq2SeqLoRA

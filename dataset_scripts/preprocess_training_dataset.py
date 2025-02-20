@@ -8,17 +8,20 @@ from collections import Counter
 import jsonlines
 from tqdm.auto import tqdm
 
+TEXT2EMOJIPROPOTION = 0.5
+
 random.seed(11944004)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--filename", type=str,
+parser.add_argument("--emoji_dataset", type=str,
                     default="emoji_dataset/emoji_dataset.csv")
+parser.add_argument("--text2emoji_train", type=str,
+                    default="emoji_dataset/text2emoji_train.jsonl")
 args = parser.parse_args()
 
-with open(args.filename) as f:
+with open(args.emoji_dataset) as f:
     reader = csv.reader(f)
-    input_text_list = [row[0] for row in reader]
-print(f"Total {len(input_text_list)} lines before preprocessing")
+    emoji_dataset_list = [row[0] for row in reader]
 
 
 def normalize_whitespace(text):
@@ -65,7 +68,7 @@ def contains_only_ascii(s):
 
 
 dataset = []
-for text in tqdm(input_text_list):
+for text in tqdm(emoji_dataset_list):
     text = normalize_whitespace(text)
     extracted_content = extract_continuous_emojis(text)
     for extracted_test, extracted_emojis in extracted_content:
@@ -76,6 +79,36 @@ for text in tqdm(input_text_list):
         if len(extracted_test) == 0 or len(extracted_emojis) == 0:
             continue
         dataset.append({"input": extracted_test, "output": extracted_emojis})
+
+# Text2EMoji Dataset
+# Randomly sample the same number of lines as the text2emoji dataset
+
+
+def reservoir_sample(file_path, sample_size):
+    reservoir = []
+    with jsonlines.open(file_path, 'r') as reader:
+        for i, line in enumerate(reader):
+            if i < sample_size:
+                reservoir.append(line)
+            else:
+                j = random.randint(0, i)
+                if j < sample_size:
+                    reservoir[j] = line
+    return reservoir
+
+
+text2emoji_dataset_list = reservoir_sample(
+    args.text2emoji_train, TEXT2EMOJIPROPOTION * len(dataset))
+
+for sample in tqdm(text2emoji_dataset_list):
+    text = postprocess(normalize_whitespace(sample['input']))
+    extracted_emoji = postprocess(sample['output'])
+    if contains_three_continuous_chars(text):
+        continue
+    if len(text) == 0 or len(extracted_emoji) == 0:
+        continue
+    dataset.append({"input": text, "output": extracted_emoji})
+
 print("##########")
 print(f"Total {len(dataset)} lines after preprocessing")
 

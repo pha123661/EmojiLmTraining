@@ -25,11 +25,23 @@ This repository contains scripts and datasets for training an emoji language mod
 
 ## Preprocessing
 
-To preprocess the training dataset, run:
+Step 1. dump copypasta from MongoDB
 ```sh
-python dataset_scripts/preprocess_training_dataset.py --filename emoji_dataset/emoji_dataset.csv
+python dataset_scripts/dumpcopypasta_jsonl_to_csv.py
 ```
 
-## License
+Step 2. Translate "KomeijiForce/Text2Emoji" to Chinese
+```sh
+python dataset_scripts/translate_text2emoji_dataset.py
+```
 
-This project is licensed under the MIT License.
+Step 3. Preprocess the training dataset
+```sh
+python dataset_scripts/preprocess_training_dataset.py
+```
+
+## Training
+
+```sh
+python train_lora.py
+```
