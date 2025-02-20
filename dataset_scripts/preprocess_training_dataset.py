@@ -8,16 +8,19 @@ from collections import Counter
 import jsonlines
 from tqdm.auto import tqdm
 
-TEXT2EMOJIPROPOTION = 0.5
+TEXT2EMOJIPROPOTION = 0.8
 
 random.seed(11944004)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--emoji_dataset", type=str,
-                    default="emoji_dataset/emoji_dataset.csv")
+                    default="source_emoji_data/emoji_dataset.csv")
 parser.add_argument("--text2emoji_train", type=str,
-                    default="emoji_dataset/text2emoji_train.jsonl")
+                    default="source_emoji_data/text2emoji_train.jsonl")
+parser.add_argument("--output_dir", type=str, default="emoji_dataset")
 args = parser.parse_args()
+
+os.makedirs(args.output_dir, exist_ok=True)
 
 with open(args.emoji_dataset) as f:
     reader = csv.reader(f)
@@ -35,11 +38,11 @@ def normalize_whitespace(text):
 
 
 # Load selected emojis and rejected emojis
-with open("emoji_data/selected_emojis.txt", "r") as f:
+with open("source_emoji_data/selected_emojis.txt", "r") as f:
     selected_emojis_list = f.readline()
 emoji_pattern = f"([^{selected_emojis_list}]+)([{selected_emojis_list}|\n]+)"
 
-with open("emoji_data/rejected_emojis.txt", "r") as f:
+with open("source_emoji_data/rejected_emojis.txt", "r") as f:
     reject_list = f.read().splitlines()
 reject_pattern = '[' + ''.join(reject_list) + ']'
 
@@ -74,7 +77,7 @@ for text in tqdm(emoji_dataset_list):
     for extracted_test, extracted_emojis in extracted_content:
         extracted_test = postprocess(extracted_test)
         extracted_emojis = postprocess(extracted_emojis)
-        if len(extracted_emojis) < 3:
+        if len(extracted_emojis) < 2:
             continue
         if contains_three_continuous_chars(extracted_test):
             continue
@@ -107,7 +110,7 @@ for sample in tqdm(text2emoji_dataset_list):
     extracted_emoji = postprocess(sample['output'])
     if contains_three_continuous_chars(text):
         continue
-    if len(text) == 0 or len(extracted_emoji) == 0:
+    if len(extracted_test) == 0 or len(extracted_emojis) == 0:
         continue
     dataset.append({"input": text, "output": extracted_emoji})
 
@@ -157,7 +160,7 @@ print(
     f"Samples with >6 output chars: {len([d for d in dataset if len(d['output']) > 6])}")
 print("##########")
 
-with jsonlines.open("emoji_dataset/train_and_val.jsonl", "w") as writer:
+with jsonlines.open(f"{args.output_dir}/train_and_val.jsonl", "w") as writer:
     writer.write_all(dataset)
 
 emoji_counter = Counter()
@@ -189,8 +192,8 @@ def split_jsonl(input_file, train_file, val_file, split_ratio=0.8):
             writer_val.write(item)
 
 
-split_jsonl("emoji_dataset/train_and_val.jsonl", "emoji_dataset/train.jsonl",
-            "emoji_dataset/val.jsonl", split_ratio=0.95)
+split_jsonl(f"{args.output_dir}/train_and_val.jsonl", f"{args.output_dir}/train.jsonl",
+            f"{args.output_dir}/val.jsonl", split_ratio=0.95)
 
 # print("Plotting...")
 # input_lengths = [len(d['input']) for d in dataset]
