@@ -74,6 +74,8 @@ for text in tqdm(emoji_dataset_list):
     for extracted_test, extracted_emojis in extracted_content:
         extracted_test = postprocess(extracted_test)
         extracted_emojis = postprocess(extracted_emojis)
+        if len(extracted_emojis) < 3:
+            continue
         if contains_three_continuous_chars(extracted_test):
             continue
         if len(extracted_test) == 0 or len(extracted_emojis) == 0:
