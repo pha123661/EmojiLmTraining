@@ -49,13 +49,13 @@ def main():
 
     def preprocess_function(examples):
         inputs, targets = [], []
-        examples['input'], examples['output']
+        # examples['input'], examples['output']
         for i in range(len(examples['input'])):
-            if examples['input'][i] and examples['output'][i]:
-                inputs.append(examples['input'][i])
-                targets.append(examples['output'][i])
+            if not (examples['input'][i] and examples['output'][i]):
+                raise ValueError(f"Empty input or output, `{examples['input'][i]}` -> `{examples['output'][i]}`")
+            inputs.append(task_prefix + examples['input'][i])
+            targets.append(examples['output'][i])
 
-        inputs = [task_prefix + inp for inp in inputs]
         model_inputs = tokenizer(
             inputs, max_length=max_length, padding='do_not_pad', truncation=True)
         labels = tokenizer(
@@ -65,6 +65,10 @@ def main():
             [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
         ]
         model_inputs["labels"] = labels["input_ids"]
+
+        if len(model_inputs["labels"]) != len(model_inputs["input_ids"]):
+            raise ValueError("The length of labels and inputs must match.")
+
         return model_inputs
 
     dataset = dataset.map(preprocess_function, batched=True)
