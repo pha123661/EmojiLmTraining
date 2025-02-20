@@ -140,6 +140,9 @@ def main():
         overwrite_output_dir=True,
         include_for_metrics=['inputs'],
         save_total_limit=10,
+        # Tensorboard settings
+        report_to=["tensorboard"],
+        logging_dir=f"{output_dir}/logs",
     )
 
     trainer = Seq2SeqTrainer(
