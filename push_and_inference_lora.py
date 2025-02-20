@@ -38,9 +38,9 @@ class EmojiLM:
             outputs.detach().cpu().numpy(), skip_special_tokens=True)[0]
         return ret
 
-    def push_to_hub(self):
-        self.model.push_to_hub("EmojiLMSeq2SeqLoRA", private=False)
-        self.tokenizer.push_to_hub("EmojiLMSeq2SeqLoRA", private=False)
+    def push_to_hub(self, hub_name):
+        self.model.push_to_hub(hub_name, private=False)
+        self.tokenizer.push_to_hub(hub_name, private=False)
 
 
 def parse_args():
@@ -48,6 +48,7 @@ def parse_args():
     parser.add_argument("--model", type=str, default="google/mt5-base")
     parser.add_argument("--lora", type=str, required=True)
     parser.add_argument("--upload", action="store_true")
+    parser.add_argument("--hub_name", type=str, default="EmojiLMSeq2SeqLoRA", help="Model name for pushing to hub")
     return parser.parse_args()
 
 
@@ -55,7 +56,7 @@ def main():
     args = parse_args()
     EmojiLmWorker = EmojiLM(args.model, args.lora)
     if args.upload:
-        EmojiLmWorker.push_to_hub()
+        EmojiLmWorker.push_to_hub(args.hub_name)
         from datasets import load_dataset
         dataset = load_dataset('./emoji_dataset')
         dataset.push_to_hub("EmojiAppendDataset", private=True)
