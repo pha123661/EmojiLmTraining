@@ -27,7 +27,7 @@ This repository contains scripts and datasets for training an emoji language mod
 
 Step 1. dump copypasta from MongoDB
 ```sh
-python dataset_scripts/dumpcopypasta_jsonl_to_csv.py
+python dataset_scripts/dump_copypaste_jsonl_to_csv.py
 ```
 
 Step 2. Translate "KomeijiForce/Text2Emoji" to Chinese
