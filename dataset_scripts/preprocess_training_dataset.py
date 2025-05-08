@@ -118,15 +118,15 @@ else:
     print("No text2emoji dataset provided, skipping this step.")
 
 ## Remove all chinese punctuations in the input
-def remove_chinese_punctuation(text):
-    chinese_punctuation_pattern = r"[，。；：“”‘’！？《》【】（）]"
-    text = re.sub(chinese_punctuation_pattern, "", text)
+def remove_punctuation(text):
+    punctuation_pattern = r"[「」，。；：“”‘’！？《》【】（）.,;:!?\"'(){}[\]]"
+    text = re.sub(punctuation_pattern, "", text)
     return text
 for i in range(len(dataset)):
-    dataset[i]['input'] = remove_chinese_punctuation(dataset[i]['input'])
-    dataset[i]['output'] = remove_chinese_punctuation(dataset[i]['output'])
+    dataset[i]['input'] = remove_punctuation(dataset[i]['input'])
+    dataset[i]['output'] = remove_punctuation(dataset[i]['output'])
 
-dataset = [d for d in dataset if len(d['input']) < 128]
+dataset = [d for d in dataset if 3 < len(d['input']) < 128]
 
 print("##########")
 print(f"Total {len(dataset)} lines after preprocessing")
@@ -205,7 +205,7 @@ def split_jsonl(input_file, train_file, val_file, split_ratio=0.8):
 
 
 split_jsonl(f"{args.output_dir}/train_and_val.jsonl", f"{args.output_dir}/train.jsonl",
-            f"{args.output_dir}/val.jsonl", split_ratio=0.95)
+            f"{args.output_dir}/val.jsonl", split_ratio=0.99)
 
 # print("Plotting...")
 # input_lengths = [len(d['input']) for d in dataset]
