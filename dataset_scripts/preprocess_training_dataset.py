@@ -81,7 +81,7 @@ for text in tqdm(emoji_dataset_list):
             continue
         if contains_three_continuous_chars(extracted_test):
             continue
-        if len(extracted_test) == 0 or len(extracted_emojis) == 0:
+        if len(text) == 0 or len(extracted_emojis) == 0:
             continue
         dataset.append({"input": extracted_test, "output": extracted_emojis})
 
