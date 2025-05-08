@@ -1,14 +1,15 @@
 import os
 import random
+from argparse import ArgumentParser
 
 import jsonlines
 import numpy as np
 import torch
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import (AutoModelForSeq2SeqLM, AutoTokenizer,
-                          DataCollatorForSeq2Seq, Seq2SeqTrainer,
-                          Seq2SeqTrainingArguments)
+from transformers import (AutoModelForCausalLM, AutoModelForSeq2SeqLM,
+                          AutoTokenizer, DataCollatorForSeq2Seq,
+                          Seq2SeqTrainer, Seq2SeqTrainingArguments)
 
 
 class SampleLabelCollator(DataCollatorForSeq2Seq):
@@ -32,15 +33,31 @@ class SampleLabelCollator(DataCollatorForSeq2Seq):
                     for label, feature in zip(labels, features)]
         return super().__call__(features, *args, **kwargs)
 
+def parse_args():
+    parser = ArgumentParser(description="Train LoRA model")
+    parser.add_argument(
+        "--dataset_name", type=str, default="./emoji_dataset", help="Dataset name"
+    )
+    parser.add_argument(
+        "--model_name", type=str, default="Qwen/Qwen3-0.6B-Base", help="Model name"
+    )
+    parser.add_argument(
+        "--output_dir", type=str, default="QwenEmojiLMSeq2SeqLoRA", help="Output directory"
+    )
+    parser.add_argument(
+        "--task_type", type=str, default="causal-lm", help="Task type", choices=["causal-lm", "seq2seq-lm"]
+    )
+    return parser.parse_args()
 
 def main():
     os.environ['CUDA_VISIBLE_DEVICES'] = \
         os.environ.get('CUDA_VISIBLE_DEVICES', '0').split(",")[0]
-    dataset_name = "./emoji_dataset"
-    model_name = "google/mt5-base"
-    output_dir = "EmojiLMSeq2SeqLoRA"
+    args = parse_args()
+    dataset_name = args.dataset_name
+    model_name = args.model_name
+    output_dir = args.output_dir
 
-    task_prefix = ""
+    task_prefix = "emoji: "
     max_length = 128
 
     dataset = load_dataset(dataset_name)
@@ -56,20 +73,28 @@ def main():
             inputs.append(task_prefix + examples['input'][i])
             targets.append(examples['output'][i])
 
-        model_inputs = tokenizer(
+        source_text = tokenizer(
             inputs, max_length=max_length, padding='do_not_pad', truncation=True)
-        labels = tokenizer(
+        target_text = tokenizer(
             text_target=targets, max_length=max_length, padding='do_not_pad', truncation=True)
 
-        labels["input_ids"] = [
-            [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in labels["input_ids"]
+        target_text["input_ids"] = [
+            [(l if l != tokenizer.pad_token_id else -100) for l in label] for label in target_text["input_ids"]
         ]
-        model_inputs["labels"] = labels["input_ids"]
 
-        if len(model_inputs["labels"]) != len(model_inputs["input_ids"]):
-            raise ValueError("The length of labels and inputs must match.")
+        if args.task_type == "causal-lm":
+            input_ids = []
+            labels = []
+            for src, label in zip(source_text["input_ids"], target_text["input_ids"]):
+                src_len = len(src)
+                input_ids.append(src + label)
+                labels.append([-100] * src_len + label)
+        elif args.task_type == "seq2seq-lm":
+            input_ids = source_text["input_ids"]
+            labels = target_text["input_ids"]
 
-        return model_inputs
+        return dict(input_ids=input_ids, labels=labels)
+
 
     dataset = dataset.map(preprocess_function, batched=True)
 
@@ -107,10 +132,15 @@ def main():
         return {}
 
     peft_config = LoraConfig(
-        task_type=TaskType.SEQ_2_SEQ_LM, inference_mode=False, r=16, lora_alpha=32, lora_dropout=0.1
+        task_type=TaskType.CAUSAL_LM if args.task_type == "causal-lm" else TaskType.SEQ2SEQ_LM,
+        inference_mode=False, r=16, lora_alpha=32, lora_dropout=0.1,
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
     )
+    if args.task_type == "causal-lm":
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+    elif args.task_type == "seq2seq-lm":
+        model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
 
@@ -121,6 +151,7 @@ def main():
         pad_to_multiple_of=8,
     )
 
+
     training_args = Seq2SeqTrainingArguments(
         # Actual Training
         per_device_train_batch_size=24,
@@ -130,7 +161,7 @@ def main():
         warmup_steps=500,
         label_smoothing_factor=0.1,
         # Data & Saving
-        dataloader_num_workers=0 if torch.backends.mps.is_available() else 4,
+        dataloader_num_workers=4 if not torch.backends.mps.is_available() else 0, # see: https://github.com/UKPLab/sentence-transformers/issues/3014
         generation_max_length=5,
         output_dir=output_dir,
         predict_with_generate=True,
@@ -139,6 +170,7 @@ def main():
         save_strategy='epoch',
         overwrite_output_dir=True,
         include_for_metrics=['inputs'],
+        label_names=["labels"],
         save_total_limit=10,
         # Tensorboard settings
         report_to=["tensorboard"],
