@@ -9,12 +9,14 @@ import torch
 from datasets import load_dataset
 from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (AutoModelForCausalLM, AutoModelForSeq2SeqLM,
-                          AutoTokenizer, DataCollatorForSeq2Seq,
-                          GenerationConfig, Seq2SeqTrainer,
-                          Seq2SeqTrainingArguments)
+                          AutoTokenizer, DataCollatorForLanguageModeling,
+                          DataCollatorForSeq2Seq, GenerationConfig,
+                          Seq2SeqTrainer, Seq2SeqTrainingArguments)
 
 
-class SampleLabelCollator(DataCollatorForSeq2Seq):
+class RandomSwappingLabelDataCollatorForSeq2Seq(DataCollatorForSeq2Seq):
+    '''
+    Data collator that randomly swaps the labels in the same sample.'''
     def __call__(self, features, *args, **kwargs):
         labels = [feature["labels"]
                   for feature in features] if "labels" in features[0].keys() else None
@@ -111,6 +113,10 @@ def main():
         partial(preprocess_function, training=True), batched=True)
     dataset['validation'] = dataset['validation'].map(
         partial(preprocess_function, training=False), batched=True)
+    # remove input and output columns from dataset
+    dataset = dataset.remove_columns(['input', 'output'])
+
+
     print("## Dataset sample: ")
     print(dataset['train'][0])
     print(f"Input: {tokenizer.decode(dataset['train'][0]['input_ids'])}, Label: {
@@ -159,16 +165,27 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(model_name)
     elif args.task_type == "seq2seq-lm":
         model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    model.train()
 
     # model = get_peft_model(model, peft_config)
     # model.print_trainable_parameters()
 
-    data_collator = SampleLabelCollator(
-        tokenizer=tokenizer,
-        model=model,
-        padding=True,
-        pad_to_multiple_of=8,
-    )
+    if args.task_type == "causal-lm":
+        data_collator = DataCollatorForSeq2Seq(
+            tokenizer=tokenizer,
+            model=model,
+            padding=True,
+            pad_to_multiple_of=8,
+        )
+    elif args.task_type == "seq2seq-lm":
+        data_collator = RandomSwappingLabelDataCollatorForSeq2Seq(
+            tokenizer=tokenizer,
+            model=model,
+            padding=True,
+            pad_to_multiple_of=8,
+        )
+    else:
+        raise ValueError(f"Unknown task type: {args.task_type}")
 
     training_args = Seq2SeqTrainingArguments(
         # Actual Training
