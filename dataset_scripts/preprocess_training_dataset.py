@@ -22,7 +22,7 @@ args = parser.parse_args()
 
 os.makedirs(args.output_dir, exist_ok=True)
 
-with open(args.emoji_dataset) as f:
+with open(args.emoji_dataset, newline='', mode='r', encoding='utf-8') as f:
     reader = csv.reader(f)
     emoji_dataset_list = [row[0] for row in reader]
 
@@ -38,11 +38,11 @@ def normalize_whitespace(text):
 
 
 # Load selected emojis and rejected emojis
-with open("source_emoji_data/selected_emojis.txt", "r") as f:
+with open("source_emoji_data/selected_emojis.txt", "r", encoding='utf-8') as f:
     selected_emojis_list = f.readline()
 emoji_pattern = f"([^{selected_emojis_list}]+)([{selected_emojis_list}|\n]+)"
 
-with open("source_emoji_data/rejected_emojis.txt", "r") as f:
+with open("source_emoji_data/rejected_emojis.txt", "r", encoding='utf-8') as f:
     reject_list = f.read().splitlines()
 reject_pattern = '[' + ''.join(reject_list) + ']'
 
@@ -102,17 +102,31 @@ def reservoir_sample(file_path, sample_size):
     return reservoir
 
 
-text2emoji_dataset_list = reservoir_sample(
-    args.text2emoji_train, TEXT2EMOJIPROPOTION * len(dataset))
+if args.text2emoji_train:
+    text2emoji_dataset_list = reservoir_sample(
+        args.text2emoji_train, TEXT2EMOJIPROPOTION * len(dataset))
 
-for sample in tqdm(text2emoji_dataset_list):
-    text = postprocess(normalize_whitespace(sample['input']))
-    extracted_emoji = postprocess(sample['output'])
-    if contains_three_continuous_chars(text):
-        continue
-    if len(extracted_test) == 0 or len(extracted_emojis) == 0:
-        continue
-    dataset.append({"input": text, "output": extracted_emoji})
+    for sample in tqdm(text2emoji_dataset_list):
+        text = postprocess(normalize_whitespace(sample['input']))
+        extracted_emoji = postprocess(sample['output'])
+        if contains_three_continuous_chars(text):
+            continue
+        if len(extracted_test) == 0 or len(extracted_emojis) == 0:
+            continue
+        dataset.append({"input": text, "output": extracted_emoji})
+else:
+    print("No text2emoji dataset provided, skipping this step.")
+
+## Remove all chinese punctuations in the input
+def remove_chinese_punctuation(text):
+    chinese_punctuation_pattern = r"[，。；：“”‘’！？《》【】（）]"
+    text = re.sub(chinese_punctuation_pattern, "", text)
+    return text
+for i in range(len(dataset)):
+    dataset[i]['input'] = remove_chinese_punctuation(dataset[i]['input'])
+    dataset[i]['output'] = remove_chinese_punctuation(dataset[i]['output'])
+
+dataset = [d for d in dataset if len(d['input']) < 128]
 
 print("##########")
 print(f"Total {len(dataset)} lines after preprocessing")
@@ -154,8 +168,6 @@ print("##########")
 print(f"Total {len(dataset)} lines after duplicate removal")
 
 print("##########")
-print(
-    f"Samples with longer than 128 input chars: {len([d for d in dataset if len(d['input']) > 128])}")
 print(
     f"Samples with >6 output chars: {len([d for d in dataset if len(d['output']) > 6])}")
 print("##########")
