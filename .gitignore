@@ -2,5 +2,5 @@
 logs
 *.json
 results*
-outputs
+outputs*
 *.gguf

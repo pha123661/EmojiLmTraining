@@ -1,14 +1,14 @@
 import json
 import os
-import random
-from dataclasses import dataclass
 from typing import Dict, List
 
 import torch
+import torch._dynamo as dynamo
 from datasets import load_dataset
 from torch.amp import GradScaler, autocast
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
+from tqdm.auto import tqdm
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           get_linear_schedule_with_warmup, set_seed)
 
@@ -17,7 +17,6 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
 MODEL_NAME = "Qwen/Qwen3-0.6B-Base"
 DATA_PATH = "./emoji_dataset"
 OUTPUT_DIR = "./outputs"
-VAL_RATIO = 0.1
 
 # Sequence lengths
 INPUT_MAX_LEN = 120
@@ -29,9 +28,9 @@ BATCH_SIZE = 24
 GRAD_ACCUM_STEPS = 1
 LR = 1e-5
 WARMUP_STEPS = 100
-NUM_EPOCHS = 150
+NUM_EPOCHS = 1500
 
-LOG_EVERY = 100             # steps
+LOG_EVERY = 1500            # steps
 MAX_NEW_TOKENS = 5          # for eval‐generation
 DEVICE = "cuda"             # single-GPU
 USE_FP16 = False
@@ -42,13 +41,12 @@ SEED = 11944004
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 set_seed(SEED)
 torch.backends.cudnn.benchmark = True
+torch.set_float32_matmul_precision('high')
 
-# 1) Load & split raw dataset
 raw = load_dataset(DATA_PATH, data_files={
                    "train": "train.jsonl", "validation": "val.jsonl"})
 train_raw, eval_raw = raw["train"], raw["validation"]
 
-# 2) Tokenizer & model
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, use_fast=True)
 tokenizer.padding_side = "left"
 tokenizer.truncation_side = "left"
@@ -58,6 +56,7 @@ if tokenizer.pad_token_id is None:
 
 model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(DEVICE)
 model.resize_token_embeddings(len(tokenizer))
+model = torch.compile(model)
 
 # ─── Tokenization ─────────────────────────────────────────────────────────────
 
@@ -131,14 +130,22 @@ train_loader = DataLoader(
 
 # ─── Optimizer & Scheduler ────────────────────────────────────────────────────
 
-optimizer = AdamW(model.parameters(), lr=LR)
+
 total_steps = (len(train_loader) // GRAD_ACCUM_STEPS) * NUM_EPOCHS
+pbar = tqdm(
+    total=total_steps,
+    initial=0,
+    desc="Training",
+    leave=True,
+    mininterval=0.5
+)
+
+optimizer = AdamW(model.parameters(), lr=LR)
 scheduler = get_linear_schedule_with_warmup(
     optimizer,
     num_warmup_steps=WARMUP_STEPS,
     num_training_steps=total_steps,
 )
-
 scaler = GradScaler()
 
 # ─── Evaluation / Generation ─────────────────────────────────────────────────
@@ -213,3 +220,9 @@ for epoch in range(1, NUM_EPOCHS + 1):
             tokenizer.save_pretrained(ckpt_dir)
             # run generation‐based eval
             run_eval(global_step)
+
+        pbar.update(1)
+        pbar.set_postfix({
+            "loss": f"{(loss.item()*GRAD_ACCUM_STEPS):.4f}",
+            "lr": optimizer.param_groups[0]["lr"]
+        })

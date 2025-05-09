@@ -1,7 +1,9 @@
 transformers==4.51.3
-torch==2.7.0
+torch==2.7.0+cu128
+triton-windows<3.4
 llama-cpp-python==0.3.9
 jsonlines
 datasets
 peft
 tensorboard
+sentencepiece
